@@ -1,0 +1,45 @@
+# Claude Code 本機設定（含特定機器路徑 / 權限白名單，不應共用）
+.claude/settings.local.json
+.claude/*.local.json
+
+# 環境變數 / 機密
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# 作業系統
+.DS_Store
+Thumbs.db
+
+# 編輯器 / IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# 日誌與暫存
+*.log
+tmp/
