@@ -32,8 +32,8 @@
 ## 快速開始
 
 1. 用 IDE 開啟此資料夾。
-2. 出現提示時點選 **「Reopen in Container」**（或按 `F1` → `Dev Containers: Reopen in Container`）。
-3. 第一次會建置映像並執行 `init-firewall.sh` 套用防火牆，請稍候。
+2. 按 `F1` → `Dev Containers: Reopen in Container`。
+3. 第一次會建置映像（image）並執行 `init-firewall.sh` 套用防火牆，請稍候。
 4. 容器開好後，在整合終端機執行：
    ```bash
    claude
