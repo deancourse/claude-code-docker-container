@@ -66,6 +66,34 @@ while read -r cidr; do
     ipset add -exist allowed-domains "$cidr"
 done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
 
+# Fetch Google's published IP ranges and add them
+# (YouTube serves from Google's rotating anycast pool, so one-shot DNS
+# snapshots of youtube.com domains go stale after container start)
+echo "Fetching Google IP ranges..."
+if ! goog_ranges=$(curl -s --connect-timeout 5 --max-time 15 https://www.gstatic.com/ipranges/goog.json); then
+    echo "ERROR: Failed to fetch Google IP ranges (curl timed out or could not reach www.gstatic.com)"
+    exit 1
+fi
+if [ -z "$goog_ranges" ]; then
+    echo "ERROR: Failed to fetch Google IP ranges (empty response from www.gstatic.com)"
+    exit 1
+fi
+
+if ! echo "$goog_ranges" | jq -e '.prefixes' >/dev/null; then
+    echo "ERROR: Google IP ranges response missing required fields"
+    exit 1
+fi
+
+echo "Processing Google IPs..."
+while read -r cidr; do
+    if [[ ! "$cidr" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
+        echo "ERROR: Invalid CIDR range from Google ranges: $cidr"
+        exit 1
+    fi
+    echo "Adding Google range $cidr"
+    ipset add -exist allowed-domains "$cidr"
+done < <(echo "$goog_ranges" | jq -r '.prefixes[].ipv4Prefix // empty' | aggregate -q)
+
 # Resolve and add other allowed domains
 for domain in \
     "registry.npmjs.org" \
@@ -137,4 +165,12 @@ if ! curl --connect-timeout 5 --max-time 10 https://api.github.com/zen >/dev/nul
     exit 1
 else
     echo "Firewall verification passed - able to reach https://api.github.com as expected"
+fi
+
+# Verify YouTube access
+if ! curl --connect-timeout 5 --max-time 10 https://www.youtube.com/generate_204 >/dev/null 2>&1; then
+    echo "ERROR: Firewall verification failed - unable to reach https://www.youtube.com"
+    exit 1
+else
+    echo "Firewall verification passed - able to reach https://www.youtube.com as expected"
 fi
