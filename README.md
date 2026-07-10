@@ -78,15 +78,16 @@
 
 ### 1. 防火牆會封鎖大部分對外連線
 
-`init-firewall.sh` 會把 `OUTPUT` 預設政策設為 `DROP`，**只允許**以下白名單網域（其餘一律拒絕）：
+`init-firewall.sh` 會把 `OUTPUT` 預設政策設為 `DROP`，**只允許**以下白名單（其餘一律拒絕）：
 
-- GitHub（`api.github.com` 動態取得的 IP 範圍）
+- GitHub（從 `api.github.com/meta` 動態取得的 IP 範圍）
+- Google / YouTube（從 `gstatic.com/ipranges/goog.json` 動態取得的 IP 範圍）
 - `registry.npmjs.org`（npm）
 - `api.anthropic.com`（Claude）
 - `sentry.io`、`statsig.anthropic.com`、`statsig.com`（遙測）
 - VS Code Marketplace 相關網域
 
-**這代表預設情況下無法存取 PyPI、apt 套件庫、其他 API 或任意網站。** 需要時請見下方「調整防火牆」。
+**這代表預設情況下無法存取 PyPI、apt 套件庫、其他 API 或任意網站。** 需要時請見下方「調整防火牆」。設計理由詳見「防火牆設計」一節。
 
 ### 2. 需要特殊權限
 
@@ -116,6 +117,61 @@ Plugin 透過 marketplace 安裝，需在 `claude` 互動視窗中操作：
 
 ---
 
+## 防火牆設計
+
+設計目標是**預設拒絕所有對外連線**，只為「Agent 為了完成任務必須取得的資料來源」個別開洞。以下是 `init-firewall.sh` 實際採用的做法與取捨。
+
+### 放行清單分成三類來源
+
+| 類別 | 內容 | 取得方式 |
+| --- | --- | --- |
+| 基礎設施 | DNS（53/udp）、SSH（22/tcp）、loopback、host 網段 | 硬編碼規則，在 `DROP` 政策生效前先放行 |
+| 動態 IP 範圍 | GitHub、Google / YouTube | 啟動時抓官方公布的 CIDR 清單 |
+| 靜態網域 | npm registry、Anthropic API、遙測、VS Code Marketplace | 啟動時用 `dig` 解析成 IP |
+
+三類最後都寫進同一個名為 `allowed-domains` 的 ipset，由單一條 iptables 規則比對，避免規則數量隨網域線性膨脹。
+
+### 為什麼 Google 用 IP 範圍，而不是像其他網域那樣解析？
+
+靜態網域那一類是**容器啟動時解析一次**，把當下的 A 記錄存進 ipset。這對 IP 穩定的服務沒問題，但 YouTube 由 Google 的 anycast pool 提供服務，回應的 IP 會輪替 —— 開機時的快照過幾分鐘就失效，接著連線就開始被防火牆擋掉，而且症狀是間歇性的、很難追。
+
+所以改抓 Google 官方公布的 `goog.json`，一次涵蓋 YouTube、Google API、gstatic 等所有前緣節點。GitHub 同理，用的是 `api.github.com/meta`。
+
+**代價**：放行範圍比單一網域大得多（等於整個 Google 對外網路）。這是刻意的取捨 —— 換來的是「YouTube 資料獲取不會隨機失敗」。若你的威脅模型不接受這個範圍，可以刪掉 Google 那一段，改回逐一解析特定網域，但要有心理準備得處理 IP 過期問題。
+
+### 規則套用的順序是有意義的
+
+```
+flush 既有規則
+  → 選擇性還原 Docker 內部 DNS（127.0.0.11 的 NAT 規則）
+  → 放行 DNS / SSH / loopback
+  → 建立 ipset 並填入三類來源
+  → 偵測 host 網段並放行
+  → 才把預設政策設為 DROP
+  → 放行 ESTABLISHED,RELATED
+  → 放行比對到 ipset 的流量
+  → REJECT 其餘所有 OUTPUT
+```
+
+兩個容易踩到的點：
+
+- **Docker DNS 必須在 flush 前先撈出來再還原**。`iptables -t nat -F` 會把 Docker 注入的 `127.0.0.11` NAT 規則一起清掉，容器內就再也解析不了任何網域 —— 包含腳本自己接下來要用的 `dig`。
+- **最後一條用 `REJECT` 而非 `DROP`**（`--reject-with icmp-admin-prohibited`）。被擋的連線會立刻收到拒絕、當場失敗；若用 `DROP`，`curl` / `pip` 會靜靜卡到逾時，體感上像是網路很慢而不是被擋。
+
+### 腳本會自我驗證
+
+結尾有三個檢查，任何一個不如預期就 `exit 1`，讓容器啟動直接失敗而不是帶著半套規則跑起來：
+
+- 連得到 `api.github.com` ✅
+- 連得到 `www.youtube.com` ✅
+- **連不到** `example.com` ✅
+
+### 埠轉發與防火牆無關
+
+`devcontainer.json` 的 `forwardPorts: [3000]` 是 host → container 方向的轉發，讓你在本機瀏覽器開 `localhost:3000` 看容器內的 dev server。它走的不是 `OUTPUT` 鏈，因此不受白名單影響，也不會擴大對外連線的攻擊面。
+
+---
+
 ## 調整防火牆（開放更多網域）
 
 編輯 `.devcontainer/init-firewall.sh`，在網域解析迴圈加入你需要的網域：
@@ -130,14 +186,21 @@ for domain in \
     ...
 ```
 
-存檔後重新套用（擇一）：
+存檔後**必須重建容器**才會生效：
 
-```bash
-sudo /usr/local/bin/init-firewall.sh   # 在現有容器中重跑
-# 或在 VS Code 重建容器：F1 → Dev Containers: Rebuild Container
+```text
+F1 → Dev Containers: Rebuild Container
 ```
 
-> 修改 `Dockerfile` 或 `devcontainer.json` 一定要 **Rebuild Container** 才會生效；只改 `init-firewall.sh` 則可直接重跑該腳本。
+> ⚠️ **改完 `init-firewall.sh` 不能只重跑腳本。** `Dockerfile` 是用 `COPY init-firewall.sh /usr/local/bin/` 在**建置映像時**把腳本烤進去的，而 `postStartCommand` 執行的是 `/usr/local/bin/init-firewall.sh` —— 那份映像裡的複本。你在 `.devcontainer/` 底下的編輯，在 rebuild 之前完全不會被執行。
+>
+> 這個坑很安靜：規則照舊套用、容器照常啟動，只是你新加的網域始終連不上。想確認容器裡跑的是哪一份，可以比對：
+>
+> ```bash
+> diff /usr/local/bin/init-firewall.sh .devcontainer/init-firewall.sh
+> ```
+>
+> 另外，`sudo` 的 NOPASSWD 授權只綁定 `/usr/local/bin/init-firewall.sh` 這一個路徑，所以也無法用 `sudo bash .devcontainer/init-firewall.sh` 繞過。
 
 ---
 
@@ -187,7 +250,7 @@ pip install -r requirements.txt
 通常不用——登入狀態存在 `/home/node/.claude` 這個 named volume，會被保留。
 
 **Q：怎麼確認防火牆有生效？**
-`init-firewall.sh` 結尾會自我驗證：能連到 `api.github.com`、且**無法**連到 `example.com` 才算通過。可看容器啟動日誌。
+`init-firewall.sh` 結尾會自我驗證：能連到 `api.github.com` 與 `www.youtube.com`、且**無法**連到 `example.com` 才算通過。可看容器啟動日誌。
 
 **Q：時區不對？**
 在 `devcontainer.json` 透過 `TZ` 環境變數設定（預設 `America/Los_Angeles`），或在本機設定 `TZ` 環境變數讓它帶入。
