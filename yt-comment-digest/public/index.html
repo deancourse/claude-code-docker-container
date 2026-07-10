@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube 留言彙整工具</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b22; --card2: #1f232d; --text: #e8eaf0; --muted: #9aa3b2;
+    --accent: #ff4d4d; --line: #2a2f3a; --chip: #262b36;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Noto Sans TC", system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; font-size: .9rem; }
+  form { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 12px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+  input { background: var(--card2); border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 10px 12px; font-size: .95rem; width: 100%; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 12px; font-size: 1rem; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .status { margin: 16px 0; padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: .9rem; white-space: pre-wrap; }
+  .video { background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: 16px 0; overflow: hidden; }
+  .vhead { display: flex; gap: 14px; padding: 14px; align-items: center; cursor: pointer; }
+  .vhead img { width: 160px; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+  .vhead .t { font-weight: 700; line-height: 1.4; }
+  .vhead .m { color: var(--muted); font-size: .85rem; margin-top: 6px; }
+  .vhead .dl { margin-left: auto; flex-shrink: 0; background: var(--chip); color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: .85rem; text-decoration: none; }
+  .comments { border-top: 1px solid var(--line); padding: 8px 16px 16px; display: none; }
+  .video.open .comments { display: block; }
+  .c { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .c:last-child { border-bottom: 0; }
+  .chead { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
+  .chead img { width: 28px; height: 28px; border-radius: 50%; }
+  .chead .a { font-weight: 700; }
+  .chead .d { color: var(--muted); }
+  .badge { background: var(--chip); border-radius: 6px; padding: 1px 7px; font-size: .72rem; color: var(--muted); }
+  .ctext { margin: 6px 0 0 36px; white-space: pre-wrap; line-height: 1.55; font-size: .92rem; }
+  .replies { margin: 8px 0 0 36px; border-left: 2px solid var(--line); padding-left: 14px; }
+  .replies .ctext { margin-left: 30px; }
+  .replies .chead img { width: 22px; height: 22px; }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin: 20px 0 4px; flex-wrap: wrap; }
+  .toolbar .sum { color: var(--muted); font-size: .9rem; }
+  .err { color: #ff8a8a; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>YouTube 留言彙整工具</h1>
+  <p class="sub">支援單支影片、播放清單、頻道網址;可設定時間範圍與關鍵字;結果可下載為 Markdown(每支影片一個檔案)。</p>
+
+  <form id="f">
+    <label>YouTube 網址(影片 / 播放清單 / 頻道)
+      <input id="url" required placeholder="https://www.youtube.com/watch?v=… 或 …/playlist?list=… 或 …/@channel">
+    </label>
+    <div class="row">
+      <label>起始日期(留言發布)<input id="from" type="date"></label>
+      <label>結束日期<input id="to" type="date"></label>
+      <label>關鍵字(留言需包含)<input id="keyword" placeholder="例如:Gemini"></label>
+    </div>
+    <button id="go">開始彙整</button>
+  </form>
+
+  <div class="status" id="status" hidden></div>
+  <div class="toolbar" id="toolbar" hidden>
+    <button id="dlAll" type="button">⬇ 下載全部 Markdown</button>
+    <span class="sum" id="summary"></span>
+  </div>
+  <div id="results"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let currentJob = null, currentResult = null;
+
+$('f').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('go').disabled = true;
+  $('results').innerHTML = '';
+  $('toolbar').hidden = true;
+  $('status').hidden = false;
+  $('status').textContent = '建立工作中…';
+  try {
+    const res = await fetch('/api/jobs', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: $('url').value.trim(), from: $('from').value, to: $('to').value, keyword: $('keyword').value.trim() }),
+    });
+    const { id, error } = await res.json();
+    if (error) throw new Error(error);
+    currentJob = id;
+    poll(id);
+  } catch (err) {
+    $('status').innerHTML = '<span class="err">錯誤:' + esc(err.message) + '</span>';
+    $('go').disabled = false;
+  }
+});
+
+async function poll(id) {
+  const res = await fetch('/api/jobs/' + id);
+  const job = await res.json();
+  if (job.status === 'running') {
+    $('status').textContent = progressText(job.progress);
+    setTimeout(() => poll(id), 1000);
+    return;
+  }
+  $('go').disabled = false;
+  if (job.status === 'error') {
+    $('status').innerHTML = '<span class="err">失敗:' + esc(job.error) + '</span>';
+    return;
+  }
+  $('status').hidden = true;
+  currentResult = job.result;
+  render(job.result);
+}
+
+function progressText(p) {
+  if (!p) return '處理中…';
+  if (p.stage === 'videos') return `已解析來源(${p.inputType}),共 ${p.total} 支影片待處理…`;
+  const pos = p.total ? `[${(p.index ?? 0) + 1}/${p.total}] ` : '';
+  if (p.stage === 'video-start') return pos + `開始抓取:${p.title || p.videoId}`;
+  if (p.stage === 'comments') return pos + `抓取主留言中… 已取得 ${p.topLevel} 則`;
+  if (p.stage === 'replies') return pos + `抓取回覆中… 主留言 ${p.topLevel} 則、回覆 ${p.replies} 則`;
+  if (p.stage === 'video-done') return pos + '完成';
+  return '處理中…';
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+function fdate(iso) { return iso ? iso.slice(0, 10) : '?'; }
+
+function render(result) {
+  const conds = [];
+  if (result.filters.from || result.filters.to) conds.push(`時間 ${result.filters.from || '…'}~${result.filters.to || '…'}`);
+  if (result.filters.keyword) conds.push(`關鍵字「${result.filters.keyword}」`);
+  $('summary').textContent =
+    `${result.sourceTitle ? result.sourceTitle + ':' : ''}${result.videoCount} 支影片,` +
+    `抓取 ${result.totalFetched} 則,符合條件 ${result.totalKept} 則` +
+    (conds.length ? `(${conds.join(',')})` : '');
+  $('toolbar').hidden = false;
+
+  $('results').innerHTML = result.results.map((r) => `
+    <div class="video">
+      <div class="vhead" onclick="this.parentElement.classList.toggle('open')">
+        <img src="${esc(r.video.thumbnail)}" alt="" loading="lazy">
+        <div>
+          <div class="t">${esc(r.video.title)}</div>
+          <div class="m">
+            ${r.video.publishDate ? '發布 ' + esc(r.video.publishDate.slice(0, 10)) + '・' : ''}
+            符合 ${r.stats.keptTotal} 則 / 共抓取 ${r.stats.fetchedTotal} 則
+            ${r.error ? '<span class="err">・錯誤:' + esc(r.error) + '</span>' : ''}
+          </div>
+        </div>
+        <a class="dl" href="/api/jobs/${currentJob}/markdown/${esc(r.video.videoId)}" onclick="event.stopPropagation()">⬇ Markdown</a>
+      </div>
+      <div class="comments">${r.comments.map(renderComment).join('') || '<p class="sum" style="color:var(--muted)">沒有符合條件的留言</p>'}</div>
+    </div>`).join('');
+}
+
+function renderComment(c) {
+  const badges = [
+    c.pinned ? '<span class="badge">📌 置頂</span>' : '',
+    c.authorIsCreator ? '<span class="badge">👑 創作者</span>' : '',
+    c.inReplyTo ? '<span class="badge">↪ 回覆 ' + esc(c.inReplyTo) + '</span>' : '',
+  ].join('');
+  return `
+    <div class="c">
+      <div class="chead">
+        ${c.avatar ? `<img src="${esc(c.avatar)}" alt="">` : ''}
+        <span class="a">${esc(c.author)}</span>
+        <span class="d">${fdate(c.publishedAt)}(${esc(c.publishedText)})・👍 ${c.likeCount}</span>
+        ${badges}
+      </div>
+      <div class="ctext">${esc(c.text)}</div>
+      ${(c.replies || []).length ? `<div class="replies">${c.replies.map((r) => `
+        <div class="c">
+          <div class="chead">
+            ${r.avatar ? `<img src="${esc(r.avatar)}" alt="">` : ''}
+            <span class="a">${esc(r.author)}</span>
+            <span class="d">${fdate(r.publishedAt)}・👍 ${r.likeCount}</span>
+            ${r.authorIsCreator ? '<span class="badge">👑 創作者</span>' : ''}
+          </div>
+          <div class="ctext">${esc(r.text)}</div>
+        </div>`).join('')}</div>` : ''}
+    </div>`;
+}
+
+$('dlAll').addEventListener('click', async () => {
+  if (!currentResult) return;
+  for (const r of currentResult.results) {
+    const a = document.createElement('a');
+    a.href = `/api/jobs/${currentJob}/markdown/${r.video.videoId}`;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    await new Promise((ok) => setTimeout(ok, 400)); // 避免瀏覽器擋多重下載
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "yt-comment-digest",
+  "version": "1.0.0",
+  "description": "YouTube 留言彙整工具（免 API，走網頁 InnerTube 端點）",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test --test-concurrency=1 test/"
+  }
+}
