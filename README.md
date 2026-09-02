@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://docs.anthropic.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Claude_Code-CLI-D97757?logo=anthropic&logoColor=white" alt="Claude Code"></a>
   <img src="https://img.shields.io/badge/Dev_Container-supported-2496ED?logo=docker&logoColor=white" alt="Dev Container">
-  <img src="https://img.shields.io/badge/base-node%3A20-339933?logo=nodedotjs&logoColor=white" alt="node:20">
+  <img src="https://img.shields.io/badge/base-node%3A24-339933?logo=nodedotjs&logoColor=white" alt="node:24">
   <img src="https://img.shields.io/badge/firewall-iptables%20%2F%20ipset-EE0000?logo=linux&logoColor=white" alt="Firewall">
   <img src="https://img.shields.io/badge/editor-VS%20Code%20%C2%B7%20Cursor-007ACC?logo=visualstudiocode&logoColor=white" alt="Editor">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
@@ -42,7 +42,7 @@
 .
 ├── .devcontainer/
 │   ├── devcontainer.json   # Dev Container 設定（映像、掛載、環境變數、啟動指令）
-│   ├── Dockerfile          # 容器映像：Node 20 + 開發工具 + Claude Code CLI
+│   ├── Dockerfile          # 容器映像：Node 24 + 開發工具 + Claude Code CLI
 │   └── init-firewall.sh    # 啟動時套用的 iptables/ipset 防火牆規則
 ├── .agents/
 │   └── skills/             # 用 `npx skills add` 安裝的 agent skills（正本，跨 agent 共用）
@@ -83,7 +83,7 @@
 
 由 `Dockerfile` 建置：
 
-- **基底**：`node:20`
+- **基底**：`node:24`，從 AWS ECR Public 的 `public.ecr.aws/docker/library/node` 拉取。它是 Docker 官方映像的鏡像，內容與 Docker Hub 的 `node:24` 相同；改用它是因為 Docker Hub 的 registry 位於 AWS 美東，部分台灣網路連線不穩，會讓建置卡在拉取基底映像
 - **Claude Code CLI**：`@anthropic-ai/claude-code`（版本由 `devcontainer.json` 的 `CLAUDE_CODE_VERSION` 控制，預設 `latest`）
 - **開發工具**：`git`、`gh`（GitHub CLI）、`fzf`、`jq`、`vim`、`nano`、`zsh`（含 powerlevel10k）、[`git-delta`](https://github.com/dandavison/delta)
 - **網路工具**：`iptables`、`ipset`、`dnsutils`、`aggregate`（防火牆需要）
@@ -251,7 +251,7 @@ sudo /usr/local/bin/init-firewall.sh   # 在現有容器中重跑
 
 ## 加入 Python 環境
 
-基底映像是 `node:20`，**預設沒有 Python**。要使用 Python，編輯 `.devcontainer/Dockerfile`，在 `apt-get install` 區塊加入：
+基底映像是 `node:24`，**預設沒有 Python**。要使用 Python，編輯 `.devcontainer/Dockerfile`，在 `apt-get install` 區塊加入：
 
 ```dockerfile
 RUN apt-get update && apt-get install -y --no-install-recommends \
