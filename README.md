@@ -16,6 +16,26 @@
 
 ---
 
+## 目錄
+
+- [目錄結構](#目錄結構)
+- [需求](#需求)
+- [快速開始](#快速開始)
+- [這個容器裡有什麼](#這個容器裡有什麼)
+- [注意事項](#注意事項)
+- [Agent Skills](#agent-skills)
+  - [目前安裝的 skills](#目前安裝的-skills)
+  - [為什麼只留這兩個](#為什麼只留這兩個)
+  - [安裝、移除與更新](#安裝移除與更新)
+  - [容器內使用瀏覽器自動化](#容器內使用瀏覽器自動化)
+- [安裝 Plugins](#安裝-plugins)
+- [調整防火牆（開放更多網域）](#調整防火牆開放更多網域)
+- [加入 Python 環境](#加入-python-環境)
+- [常見問題](#常見問題)
+- [授權](#授權)
+
+---
+
 ## 目錄結構
 
 ```
@@ -24,8 +44,13 @@
 │   ├── devcontainer.json   # Dev Container 設定（映像、掛載、環境變數、啟動指令）
 │   ├── Dockerfile          # 容器映像：Node 20 + 開發工具 + Claude Code CLI
 │   └── init-firewall.sh    # 啟動時套用的 iptables/ipset 防火牆規則
+├── .agents/
+│   └── skills/             # 用 `npx skills add` 安裝的 agent skills（正本，跨 agent 共用）
 ├── .claude/
+│   ├── skills/             # Claude Code 讀取的 skills（多為指向 .agents/skills 的 symlink）
 │   └── settings.local.json # 專案層級的本機設定（權限白名單等）
+├── skills-lock.json        # skills 的來源與內容雜湊鎖定檔
+├── LICENSE
 └── README.md
 ```
 
@@ -74,7 +99,7 @@
 
 ---
 
-## ⚠️ 注意事項
+## 注意事項
 
 ### 1. 防火牆會封鎖大部分對外連線
 
@@ -99,6 +124,89 @@
 ### 4. 沙箱不是萬靈丹
 
 容器隔離與防火牆能降低風險，但仍建議在重要操作前檢視 Claude 的計畫，並善用權限提示。
+
+---
+
+## Agent Skills
+
+[Agent Skills](https://skills.sh/) 是以 `SKILL.md` 為核心的可安裝知識包，Claude Code 會在任務符合其描述時自動載入。本專案用 [`skills` CLI](https://github.com/vercel-labs/skills) 安裝：
+
+- 正本放在 `.agents/skills/`，`.claude/skills/` 以 symlink 指過去（其他 agent 也能共用同一份）
+- `skills-lock.json` 記錄每個 skill 的來源 repo 與內容雜湊
+- 這些檔案**都有進版控**，clone 下來就有，不用在容器裡重裝
+
+### 目前安裝的 skills
+
+| Skill | 來源 | 用途 | 在這個容器裡 |
+| --- | --- | --- | --- |
+| `frontend-design` | anthropics/skills | UI 視覺方向、字體、版面，避免「AI 模板感」 | 純文件，直接可用 |
+| `agent-browser` | vercel-labs/agent-browser | 無頭瀏覽器自動化：開頁、點擊、截圖、QA，讓 Claude 自己驗收 UI | 要另外裝 Chromium，見下方 |
+| `git-smart-commit` | 本專案自訂 | 把雜亂變更拆成多個 conventional commit，與前端無關 | 純文件 |
+
+> `git-smart-commit` 不是用 CLI 裝的，所以不在 `skills-lock.json` 裡；目前 `.agents/skills/` 與 `.claude/skills/` 各有一份相同的實體檔案，而不是 symlink。
+
+### 為什麼只留這兩個
+
+評估情境是**前端網頁專案**（例如 `feat/yt-comment-digest` 分支的 YouTube 留言彙整工具：單檔 HTML/CSS/JS 前端 + Node.js 伺服器），並把這個容器的實際條件一起考慮進去：**沒有 GUI、沒有 Python、對外連線受防火牆限制**。
+
+結論是 `frontend-design` 負責「畫面該長什麼樣」，`agent-browser` 負責「讓 Claude 自己開瀏覽器驗收」，兩者就是最小且足夠的組合。原本一起裝的四個 skill 已移除：
+
+| 已移除 | 原因 |
+| --- | --- |
+| `browser-use` | 與 `agent-browser` 功能重複；需要 Python 3.12、uv、有 GUI 的桌面 Chrome，容器內都沒有 |
+| `skill-creator` | 用來撰寫、評測 skill 本身，與前端開發無關；還帶進 4000 多行 Python 與 HTML |
+| `code-review-expert` | Claude Code 內建的 `/code-review`、`/security-review` 已涵蓋 |
+| `find-skills` | 只是搜尋工具；`npx skills find` 走 `skills.sh/api/search`，防火牆未放行。想用就以 `-g` 裝到使用者層級 |
+
+之後可視需要再加：
+
+- [`web-design-guidelines`](https://skills.sh/vercel-labs/agent-skills/web-design-guidelines)（vercel-labs/agent-skills）：100+ 條可及性、效能、表單、深色模式等 UX 規則的稽核清單，純文件、無相依。當你開始在意鍵盤操作、對比度、表單錯誤提示這類細節時再加。
+- 若專案改用 React / Next.js：同一個 repo 的 `react-best-practices` 與 `composition-patterns`。目前是純 HTML/JS，用不到。
+- anthropics/skills 的 `webapp-testing`（Playwright 測試工具組）：需要 Python、`pip install playwright` 與從 Playwright CDN 下載 Chromium，三者在容器內都沒有或被防火牆擋住。若你依「加入 Python 環境」一節裝了 Python 並放行相關網域，它是 `agent-browser` 之外的另一個選擇。
+
+### 安裝、移除與更新
+
+以下指令在專案根目錄執行，容器內外皆可（`add` 只連 GitHub 與 npm registry，都在白名單內）：
+
+```bash
+npx skills add vercel-labs/agent-skills@web-design-guidelines -y   # 之後想加時
+npx skills remove <skill-name> -y                                  # 移除
+
+npx skills list      # 列出已安裝的 skills
+npx skills check     # 檢查是否有更新
+npx skills update    # 更新全部
+```
+
+> `npx skills find <關鍵字>` 會連 `skills.sh` 搜尋，容器內預設被擋；請在本機執行，或直接到 [skills.sh](https://skills.sh/) 瀏覽排行榜。
+
+### 容器內使用瀏覽器自動化
+
+`agent-browser` 的 CLI 是 Rust 原生二進位，透過 npm 安裝；`agent-browser install` 會從 Google 的 Chrome for Testing 下載瀏覽器。以現在的防火牆規則，這兩步都走得通：npm registry 在白名單、版本清單在 GitHub Pages（GitHub IP 範圍內）、下載來源 `storage.googleapis.com` 在 Google IP 範圍內。
+
+走不通的是 **Chromium 需要的系統函式庫**。`agent-browser install --with-deps` 會呼叫 `apt-get`，但 apt 套件庫不在白名單，`node` 使用者也沒有 apt 的 sudo 權限。解法是在 `Dockerfile` 建置階段先裝好（建置時防火牆尚未生效），順便把 `agent-browser` 也裝進映像，這樣 Rebuild 後不用重來：
+
+```dockerfile
+# 在既有的 apt-get install 區塊加入 Chromium 的執行期相依（Debian bookworm 套件名）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  # ...既有套件... \
+  libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libcups2 libdrm2 \
+  libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libxcb1 \
+  libx11-xcb1 libasound2 libpango-1.0-0 libcairo2 fonts-noto-cjk fonts-noto-color-emoji \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# 放在 "Install Claude" 那行之後（此時已切換為 node 使用者、npm 全域前綴已設定）
+RUN npm install -g agent-browser && agent-browser install
+```
+
+Rebuild Container 後，在容器內確認：
+
+```bash
+agent-browser doctor                        # 檢查瀏覽器能否啟動
+agent-browser open http://localhost:3000    # 開你的 dev server
+agent-browser snapshot                      # 取得可互動元素的無障礙樹
+```
+
+> 這段設定尚未在本專案的容器裡實際跑過；套件名稱已對照 Debian bookworm 的套件索引確認存在。若 `doctor` 回報缺少函式庫，依訊息補進上面的清單即可。
 
 ---
 
@@ -191,6 +299,12 @@ pip install -r requirements.txt
 
 **Q：時區不對？**
 在 `devcontainer.json` 透過 `TZ` 環境變數設定（預設 `America/Los_Angeles`），或在本機設定 `TZ` 環境變數讓它帶入。
+
+**Q：`npx skills add` 在容器裡能用嗎？`npx skills find` 為什麼沒回應？**
+`add` 只連 GitHub 與 npm registry，可以用。`find` 會連 `skills.sh` 的搜尋 API，防火牆預設沒放行，請在本機執行或到 [skills.sh](https://skills.sh/) 瀏覽。
+
+**Q：`agent-browser install --with-deps` 失敗？**
+`--with-deps` 會呼叫 `apt-get`，容器內被防火牆擋住。請改在 `Dockerfile` 安裝系統函式庫，見「容器內使用瀏覽器自動化」。
 
 ---
 
