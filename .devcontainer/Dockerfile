@@ -1,4 +1,4 @@
-FROM node:20
+FROM public.ecr.aws/docker/library/node:24
 
 ARG TZ
 ENV TZ="$TZ"
