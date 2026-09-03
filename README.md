@@ -27,7 +27,6 @@
   - [目前安裝的 skills](#目前安裝的-skills)
   - [為什麼只留 frontend-design](#為什麼只留-frontend-design)
   - [安裝、移除與更新](#安裝移除與更新)
-  - [（選配）在容器內使用 agent-browser](#選配在容器內使用-agent-browser)
 - [安裝 Plugins](#安裝-plugins)
 - [調整防火牆（開放更多網域）](#調整防火牆開放更多網域)
 - [加入 Python 環境](#加入-python-環境)
@@ -156,11 +155,11 @@
 | `skill-creator` | 用來撰寫、評測 skill 本身，與前端開發無關；還帶進 4000 多行 Python 與 HTML |
 | `code-review-expert` | Claude Code 內建的 `/code-review`、`/security-review` 已涵蓋 |
 | `find-skills` | 只是搜尋工具；`npx skills find` 走 `skills.sh/api/search`，防火牆未放行。想用就以 `-g` 裝到使用者層級 |
-| `agent-browser` | 無頭瀏覽器自動化。skill 本身只是指引，實際要在 `Dockerfile` 另裝 Chromium 與系統函式庫才跑得起來，且尚未在本容器實測；目前專案用不到，要用時見下方選配章節 |
+| `agent-browser` | 無頭瀏覽器自動化。skill 本身只是指引，實際要在 `Dockerfile` 另裝 Chromium 與系統函式庫才跑得起來，且尚未在本容器實測；目前專案用不到 |
 
 之後可視需要再加：
 
-- [`agent-browser`](https://github.com/vercel-labs/agent-browser)（vercel-labs/agent-browser）：無頭瀏覽器自動化，讓 Claude 自己開頁、點擊、截圖驗收 UI。當你希望 Claude 能自己驗收畫面時再加；容器內的安裝步驟見「（選配）在容器內使用 agent-browser」。
+- [`agent-browser`](https://github.com/vercel-labs/agent-browser)（vercel-labs/agent-browser）：無頭瀏覽器自動化，讓 Claude 自己開頁、點擊、截圖驗收 UI。當你希望 Claude 能自己驗收畫面時再加。
 - [`web-design-guidelines`](https://skills.sh/vercel-labs/agent-skills/web-design-guidelines)（vercel-labs/agent-skills）：100+ 條可及性、效能、表單、深色模式等 UX 規則的稽核清單，純文件、無相依。當你開始在意鍵盤操作、對比度、表單錯誤提示這類細節時再加。
 - 若專案改用 React / Next.js：同一個 repo 的 `react-best-practices` 與 `composition-patterns`。目前是純 HTML/JS，用不到。
 - anthropics/skills 的 `webapp-testing`（Playwright 測試工具組）：需要 Python、`pip install playwright` 與從 Playwright CDN 下載 Chromium，三者在容器內都沒有或被防火牆擋住。若你依「加入 Python 環境」一節裝了 Python 並放行相關網域，它是 `agent-browser` 之外的另一個選擇。
@@ -179,41 +178,6 @@ npx skills update    # 更新全部
 ```
 
 > `npx skills find <關鍵字>` 會連 `skills.sh` 搜尋，容器內預設被擋；請在本機執行，或直接到 [skills.sh](https://skills.sh/) 瀏覽排行榜。
-
-### （選配）在容器內使用 agent-browser
-
-若之後想讓 Claude 自己開瀏覽器驗收 UI，先把 skill 裝回來：
-
-```bash
-npx skills add vercel-labs/agent-browser -y
-```
-
-`agent-browser` 的 CLI 是 Rust 原生二進位，透過 npm 安裝；`agent-browser install` 會從 Google 的 Chrome for Testing 下載瀏覽器。以現在的防火牆規則，這兩步都走得通：npm registry 在白名單、版本清單在 GitHub Pages（GitHub IP 範圍內）、下載來源 `storage.googleapis.com` 在 Google IP 範圍內。
-
-走不通的是 **Chromium 需要的系統函式庫**。`agent-browser install --with-deps` 會呼叫 `apt-get`，但 apt 套件庫不在白名單，`node` 使用者也沒有 apt 的 sudo 權限。解法是在 `Dockerfile` 建置階段先裝好（建置時防火牆尚未生效），順便把 `agent-browser` 也裝進映像，這樣 Rebuild 後不用重來：
-
-```dockerfile
-# 在既有的 apt-get install 區塊加入 Chromium 的執行期相依（Debian bookworm 套件名）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  # ...既有套件... \
-  libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libcups2 libdrm2 \
-  libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libxcb1 \
-  libx11-xcb1 libasound2 libpango-1.0-0 libcairo2 fonts-noto-cjk fonts-noto-color-emoji \
-  && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# 放在 "Install Claude" 那行之後（此時已切換為 node 使用者、npm 全域前綴已設定）
-RUN npm install -g agent-browser && agent-browser install
-```
-
-Rebuild Container 後，在容器內確認：
-
-```bash
-agent-browser doctor                        # 檢查瀏覽器能否啟動
-agent-browser open http://localhost:3000    # 開你的 dev server
-agent-browser snapshot                      # 取得可互動元素的無障礙樹
-```
-
-> 這段設定尚未在本專案的容器裡實際跑過；套件名稱已對照 Debian bookworm 的套件索引確認存在。若 `doctor` 回報缺少函式庫，依訊息補進上面的清單即可。
 
 ---
 
@@ -309,9 +273,6 @@ pip install -r requirements.txt
 
 **Q：`npx skills add` 在容器裡能用嗎？`npx skills find` 為什麼沒回應？**
 `add` 只連 GitHub 與 npm registry，可以用。`find` 會連 `skills.sh` 的搜尋 API，防火牆預設沒放行，請在本機執行或到 [skills.sh](https://skills.sh/) 瀏覽。
-
-**Q：`agent-browser install --with-deps` 失敗？**
-`--with-deps` 會呼叫 `apt-get`，容器內被防火牆擋住。請改在 `Dockerfile` 安裝系統函式庫，見「（選配）在容器內使用 agent-browser」。
 
 ---
 
