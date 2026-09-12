@@ -1,39 +1,39 @@
-# Claude Code Docker 沙箱（Dev Container）
 
 <p align="center">
   <a href="https://docs.anthropic.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Claude_Code-CLI-D97757?logo=anthropic&logoColor=white" alt="Claude Code"></a>
   <img src="https://img.shields.io/badge/Dev_Container-supported-2496ED?logo=docker&logoColor=white" alt="Dev Container">
   <img src="https://img.shields.io/badge/base-node%3A24-339933?logo=nodedotjs&logoColor=white" alt="node:24">
-  <img src="https://img.shields.io/badge/firewall-iptables%20%2F%20ipset-EE0000?logo=linux&logoColor=white" alt="Firewall">
-  <img src="https://img.shields.io/badge/editor-VS%20Code%20%C2%B7%20Cursor-007ACC?logo=visualstudiocode&logoColor=white" alt="Editor">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs welcome">
 </p>
 
-在一個**網路受限的 Docker 容器**裡執行 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)，讓 AI Agent 可以在隔離環境中讀寫程式碼、執行指令，同時透過防火牆把對外連線限制在少數白名單網域，降低資料外洩與誤操作的風險。
+在一個**有限制的 Docker 容器**裡執行 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)，讓 AI Agent 可以在隔離環境中讀寫程式碼、執行指令，同時透過防火牆把對外連線限制在少數白名單網域，降低資料外洩與誤操作的風險。
 
 本專案改自 Anthropic 官方的 `.devcontainer` [參考實作](https://github.com/anthropics/claude-code/tree/main/.devcontainer)。
 
----
+## 影片教學
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=BPdyiaC-3Lw">
+    <img src="https://img.youtube.com/vi/BPdyiaC-3Lw/maxresdefault.jpg" alt="在 YouTube 觀看教學影片" width="720">
+  </a>
+</p>
+
+> 影片示範一套「讓 AI 放手做事、又不會失控」的完整流程：先把 Claude Code 關進沙箱，再解開權限限制、補上規格與存檔點，最後把成果部署上線。
 
 ## 目錄
 
+- [影片教學](#影片教學)
 - [目錄結構](#目錄結構)
 - [需求](#需求)
 - [快速開始](#快速開始)
 - [這個容器裡有什麼](#這個容器裡有什麼)
 - [注意事項](#注意事項)
 - [Agent Skills](#agent-skills)
-  - [目前安裝的 skills](#目前安裝的-skills)
-  - [為什麼只留 frontend-design](#為什麼只留-frontend-design)
-  - [安裝、移除與更新](#安裝移除與更新)
 - [安裝 Plugins](#安裝-plugins)
 - [調整防火牆（開放更多網域）](#調整防火牆開放更多網域)
 - [加入 Python 環境](#加入-python-環境)
 - [常見問題](#常見問題)
 - [授權](#授權)
-
----
 
 ## 目錄結構
 
@@ -53,15 +53,11 @@
 └── README.md
 ```
 
----
-
 ## 需求
 
 - [Docker](https://www.docker.com/)（Desktop 或 Engine）
 - IDE: [VS Code](https://code.visualstudio.com/)、[Cursor](https://cursor.so/)、[Antigravity](https://antigravity.dev/)
 - 透過 Extensions 安裝 Dev Containers
-
----
 
 ## 快速開始
 
@@ -75,8 +71,6 @@
 5. 依照指示完成登入即可開始使用。
 
 > 你的程式碼透過 bind mount 掛載在容器內的 `/workspace`，在容器內的修改會直接反映到本機檔案。
-
----
 
 ## 這個容器裡有什麼
 
@@ -95,8 +89,6 @@
   - `/home/node/.claude` → Claude Code 的設定、登入狀態、使用者層級 skills
   - `/commandhistory` → shell 歷史紀錄
 - VS Code 預裝擴充套件：Claude Code、ESLint、Prettier、GitLens
-
----
 
 ## 注意事項
 
@@ -123,8 +115,6 @@
 ### 4. 沙箱不是萬靈丹
 
 容器隔離與防火牆能降低風險，但仍建議在重要操作前檢視 Claude 的計畫，並善用權限提示。
-
----
 
 ## Agent Skills
 
@@ -179,8 +169,6 @@ npx skills update    # 更新全部
 
 > `npx skills find <關鍵字>` 會連 `skills.sh` 搜尋，容器內預設被擋；請在本機執行，或直接到 [skills.sh](https://skills.sh/) 瀏覽排行榜。
 
----
-
 ## 安裝 Plugins
 
 Plugin 透過 marketplace 安裝，需在 `claude` 互動視窗中操作：
@@ -192,8 +180,6 @@ Plugin 透過 marketplace 安裝，需在 `claude` 互動視窗中操作：
 ```
 
 > **防火牆提醒**：marketplace 與 plugin 多半從 GitHub 取得——GitHub 已在白名單內，通常可直接安裝。若 plugin 安裝過程需要存取**其他網域**（例如自架 registry），請先把該網域加入防火牆白名單（見下節）。
-
----
 
 ## 調整防火牆（開放更多網域）
 
@@ -217,8 +203,6 @@ sudo /usr/local/bin/init-firewall.sh   # 在現有容器中重跑
 ```
 
 > 修改 `Dockerfile` 或 `devcontainer.json` 一定要 **Rebuild Container** 才會生效；只改 `init-firewall.sh` 則可直接重跑該腳本。
-
----
 
 ## 加入 Python 環境
 
@@ -255,8 +239,6 @@ pip install -r requirements.txt
 
 > 若需要更完整的 Python 工具鏈，也可考慮在 `devcontainer.json` 改用官方 [Python Dev Container Feature](https://github.com/devcontainers/features/tree/main/src/python) 或直接換成 Python 基底映像。
 
----
-
 ## 常見問題
 
 **Q：`pip install` / `apt-get install` / `curl` 卡住或逾時？**
@@ -273,8 +255,6 @@ pip install -r requirements.txt
 
 **Q：`npx skills add` 在容器裡能用嗎？`npx skills find` 為什麼沒回應？**
 `add` 只連 GitHub 與 npm registry，可以用。`find` 會連 `skills.sh` 的搜尋 API，防火牆預設沒放行，請在本機執行或到 [skills.sh](https://skills.sh/) 瀏覽。
-
----
 
 ## 授權
 
