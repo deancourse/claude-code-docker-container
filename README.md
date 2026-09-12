@@ -29,7 +29,6 @@
 - [這個容器裡有什麼](#這個容器裡有什麼)
 - [注意事項](#注意事項)
 - [Agent Skills](#agent-skills)
-- [安裝 Plugins](#安裝-plugins)
 - [調整防火牆（開放更多網域）](#調整防火牆開放更多網域)
 - [加入 Python 環境](#加入-python-環境)
 - [常見問題](#常見問題)
@@ -131,56 +130,6 @@
 | `frontend-design` | anthropics/skills | UI 視覺方向、字體、版面，避免「AI 模板感」 | 純文件，直接可用 |
 | `git-smart-commit` | 本專案自訂 | 把雜亂變更拆成多個 conventional commit，與前端無關 | 純文件 |
 
-> `git-smart-commit` 不是用 CLI 裝的，所以不在 `skills-lock.json` 裡；目前 `.agents/skills/` 與 `.claude/skills/` 各有一份相同的實體檔案，而不是 symlink。
-
-### 為什麼只留 frontend-design
-
-評估情境是**前端網頁專案**（例如 `feat/yt-comment-digest` 分支的 YouTube 留言彙整工具：單檔 HTML/CSS/JS 前端 + Node.js 伺服器），並把這個容器的實際條件一起考慮進去：**沒有 GUI、沒有 Python、對外連線受防火牆限制**。
-
-結論是只留 `frontend-design` 負責「畫面該長什麼樣」：純文件、零相依，clone 下來就能用。原本一起裝的五個 skill 已移除：
-
-| 已移除 | 原因 |
-| --- | --- |
-| `browser-use` | 與 `agent-browser` 功能重複；需要 Python 3.12、uv、有 GUI 的桌面 Chrome，容器內都沒有 |
-| `skill-creator` | 用來撰寫、評測 skill 本身，與前端開發無關；還帶進 4000 多行 Python 與 HTML |
-| `code-review-expert` | Claude Code 內建的 `/code-review`、`/security-review` 已涵蓋 |
-| `find-skills` | 只是搜尋工具；`npx skills find` 走 `skills.sh/api/search`，防火牆未放行。想用就以 `-g` 裝到使用者層級 |
-| `agent-browser` | 無頭瀏覽器自動化。skill 本身只是指引，實際要在 `Dockerfile` 另裝 Chromium 與系統函式庫才跑得起來，且尚未在本容器實測；目前專案用不到 |
-
-之後可視需要再加：
-
-- [`agent-browser`](https://github.com/vercel-labs/agent-browser)（vercel-labs/agent-browser）：無頭瀏覽器自動化，讓 Claude 自己開頁、點擊、截圖驗收 UI。當你希望 Claude 能自己驗收畫面時再加。
-- [`web-design-guidelines`](https://skills.sh/vercel-labs/agent-skills/web-design-guidelines)（vercel-labs/agent-skills）：100+ 條可及性、效能、表單、深色模式等 UX 規則的稽核清單，純文件、無相依。當你開始在意鍵盤操作、對比度、表單錯誤提示這類細節時再加。
-- 若專案改用 React / Next.js：同一個 repo 的 `react-best-practices` 與 `composition-patterns`。目前是純 HTML/JS，用不到。
-- anthropics/skills 的 `webapp-testing`（Playwright 測試工具組）：需要 Python、`pip install playwright` 與從 Playwright CDN 下載 Chromium，三者在容器內都沒有或被防火牆擋住。若你依「加入 Python 環境」一節裝了 Python 並放行相關網域，它是 `agent-browser` 之外的另一個選擇。
-
-### 安裝、移除與更新
-
-以下指令在專案根目錄執行，容器內外皆可（`add` 只連 GitHub 與 npm registry，都在白名單內）：
-
-```bash
-npx skills add vercel-labs/agent-skills@web-design-guidelines -y   # 之後想加時
-npx skills remove <skill-name> -y                                  # 移除
-
-npx skills list      # 列出已安裝的 skills
-npx skills check     # 檢查是否有更新
-npx skills update    # 更新全部
-```
-
-> `npx skills find <關鍵字>` 會連 `skills.sh` 搜尋，容器內預設被擋；請在本機執行，或直接到 [skills.sh](https://skills.sh/) 瀏覽排行榜。
-
-## 安裝 Plugins
-
-Plugin 透過 marketplace 安裝，需在 `claude` 互動視窗中操作：
-
-```text
-/plugin marketplace add <owner/repo 或 marketplace URL>
-/plugin install <plugin-name>
-/plugin            # 開啟管理介面
-```
-
-> **防火牆提醒**：marketplace 與 plugin 多半從 GitHub 取得——GitHub 已在白名單內，通常可直接安裝。若 plugin 安裝過程需要存取**其他網域**（例如自架 registry），請先把該網域加入防火牆白名單（見下節）。
-
 ## 調整防火牆（開放更多網域）
 
 編輯 `.devcontainer/init-firewall.sh`，在網域解析迴圈加入你需要的網域：
@@ -245,7 +194,7 @@ pip install -r requirements.txt
 多半是防火牆擋住了該網域。確認目標網域已加入 `init-firewall.sh` 白名單並重跑腳本。
 
 **Q：重建容器後要重新登入 Claude 嗎？**
-通常不用——登入狀態存在 `/home/node/.claude` 這個 named volume，會被保留。
+除了第一次要登入外，後續登入狀態會被保留。
 
 **Q：怎麼確認防火牆有生效？**
 `init-firewall.sh` 結尾會自我驗證：能連到 `api.github.com`、且**無法**連到 `example.com` 才算通過。可看容器啟動日誌。
